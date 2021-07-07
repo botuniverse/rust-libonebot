@@ -1,15 +1,13 @@
-use anyhow::Error as AnyhowError;
+use anyhow::Error;
 use async_trait::async_trait;
 use dyn_clonable::clonable;
 use std::{
     collections::HashMap,
-    net::SocketAddr,
     time::{Duration, SystemTime},
 };
-use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::mpsc::{Receiver, Sender},
-};
+use tokio::sync::mpsc::{Receiver, Sender};
+
+type Result<T> = std::result::Result<T, Error>;
 
 pub struct Bot {
     user: User,
@@ -17,26 +15,21 @@ pub struct Bot {
     config: Config,
 
     communications: Vec<Box<dyn Communication>>,
-    event_sender: Sender<Event>,
-    event_receiver: Receiver<Event>,
-    action_sender: Sender<Action>,
-    action_receiver: Receiver<Action>,
+    event_tx: Sender<Event>,
+    event_rx: Receiver<Event>,
 
-    custom_field: HashMap<String, String>,
+    pub custom_field: HashMap<String, String>,
 }
 
 impl Bot {
-    pub fn new(event_buffer: usize, action_buffer: usize) -> Self {
-        let (event_sender, event_receiver) = tokio::sync::mpsc::channel(event_buffer);
-        let (action_sender, action_receiver) = tokio::sync::mpsc::channel(action_buffer);
+    pub fn new(event_buffer: usize) -> Self {
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(event_buffer);
         Self {
             user: User::default(),
             config: Config::default(),
             communications: Vec::new(),
-            event_sender,
-            event_receiver,
-            action_sender,
-            action_receiver,
+            event_tx,
+            event_rx,
             custom_field: HashMap::new(),
         }
     }
@@ -45,28 +38,32 @@ impl Bot {
         self.communications.push(communication);
     }
 
-    async fn start(&self) {
+    pub async fn start(&mut self) {
         for communication in self.communications.iter() {
             let communication = communication.clone();
-            let event_sender = self.event_sender.clone();
+            let event_tx = self.event_tx.clone();
             tokio::spawn(async move {
-                communication.start(event_sender).await;
+                communication.start(event_tx).await.unwrap();
             });
         }
 
-        loop {}
+        self.push_events().await;
     }
 
     async fn push_events(&mut self) {
-        while let Some(event) = self.event_receiver.recv().await {
+        while let Some(event) = self.event_rx.recv().await {
+            if event.content.is_stop() {
+                return;
+            }
             for communication in self.communications.iter() {
+                let communication = communication.clone();
                 let event = event.clone();
-                communication.push_event(event).await;
+                tokio::spawn(async move {
+                    communication.push_event(event).await.unwrap();
+                });
             }
         }
     }
-
-    async fn process_actions(&self) {}
 }
 
 #[derive(Default)]
@@ -74,7 +71,7 @@ struct Config {
     message_format: MessageFormat,
     rate_limit: Duration,
 
-    custom_field: HashMap<String, String>,
+    pub custom_field: HashMap<String, String>,
 }
 
 pub enum MessageFormat {
@@ -91,51 +88,8 @@ impl Default for MessageFormat {
 #[async_trait]
 #[clonable]
 pub trait Communication: Clone + Send + Sync {
-    async fn start(&self, event_sender: Sender<Event>);
-    async fn push_event(&self, event: Event);
-}
-
-mod communications {
-    use crate::*;
-    pub struct HTTP {
-        socket_addr: SocketAddr,
-        access_token: String,
-    }
-
-    pub struct HTTPPost {
-        post_url: String,
-        timeout: Duration,
-        secret: String,
-    }
-
-    pub struct WebSocket {
-        socket_addr: SocketAddr,
-        access_token: String,
-    }
-
-    impl WebSocket {
-        async fn start(&self, event_sender: Sender<Event>) -> Result<(), AnyhowError> {
-            let listener = TcpListener::bind(&self.socket_addr).await?;
-
-            while let Ok((stream, addr)) = listener.accept().await {
-                tokio::spawn(async move {});
-            }
-
-            Ok(())
-        }
-    }
-
-    pub struct WebSocketReverse {
-        connect_url: String,
-        r#type: WebSocketReverseType,
-        access_token: String,
-    }
-
-    pub enum WebSocketReverseType {
-        API,
-        Event,
-        Universal,
-    }
+    async fn start(&self, event_tx: Sender<Event>) -> Result<()>;
+    async fn push_event(&self, event: Event) -> Result<()>;
 }
 
 #[derive(Clone)]
@@ -196,6 +150,17 @@ pub enum EventContent {
     Notice(Notice),
     Request(Request),
     Meta(Meta),
+    Stop,
+}
+
+impl EventContent {
+    fn is_stop(&self) -> bool {
+        if let Self::Stop = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -237,3 +202,5 @@ pub struct Group {
 
     custom_field: HashMap<String, String>,
 }
+
+mod communications;
