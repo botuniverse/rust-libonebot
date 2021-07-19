@@ -1,11 +1,12 @@
 use crate::{Communication, Event, Result};
 use async_trait::async_trait;
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::mpsc::Sender,
+    sync::broadcast::{Receiver, Sender},
 };
+use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 
 #[derive(Clone)]
 pub struct WebSocket {
@@ -24,7 +25,8 @@ impl Communication for WebSocket {
 
         while let Ok((stream, _)) = listener.accept().await {
             let peer = stream.peer_addr()?;
-            tokio::spawn(Self::accept_connection(peer, stream));
+            let mut event_rx = event_tx.subscribe();
+            tokio::spawn(Self::accept_connection(peer, stream, event_rx));
         }
 
         Ok(())
@@ -36,12 +38,31 @@ impl Communication for WebSocket {
 }
 
 impl WebSocket {
-    async fn accept_connection(peer: SocketAddr, stream: TcpStream) -> Result<()> {
+    async fn accept_connection(
+        peer: SocketAddr,
+        stream: TcpStream,
+        mut event_rx: Receiver<Event>,
+    ) -> Result<()> {
         let mut ws_stream = tokio_tungstenite::accept_async(stream).await?;
-        let (ws_sender, mut ws_receiver) = ws_stream.split();
+        let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
-        while let Some(msg) = ws_receiver.next().await {
-            let msg = msg?;
+        loop {
+            tokio::select! {
+                event = event_rx.recv() => {
+                    ws_sender.send(TungsteniteMessage::Text("received an event".to_string())).await?;
+                }
+                msg = ws_receiver.next() => {
+                    match msg {
+                        Some(msg) => {
+                            let msg = msg?;
+                            if msg.is_close() {
+                                break;
+                            }
+                        },
+                        None => break,
+                    }
+                }
+            }
         }
 
         Ok(())

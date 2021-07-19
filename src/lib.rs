@@ -5,11 +5,11 @@ use std::{
     collections::HashMap,
     time::{Duration, SystemTime},
 };
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::broadcast::{Receiver, Sender};
 
 type Result<T> = std::result::Result<T, Error>;
 
-pub struct Bot {
+pub struct OneBot {
     user: User,
 
     config: Config,
@@ -21,9 +21,9 @@ pub struct Bot {
     pub custom_field: HashMap<String, String>,
 }
 
-impl Bot {
-    pub fn new(event_buffer: usize) -> Self {
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(event_buffer);
+impl OneBot {
+    pub fn new(event_capacity: usize) -> Self {
+        let (event_tx, event_rx) = tokio::sync::broadcast::channel(event_capacity);
         Self {
             user: User::default(),
             config: Config::default(),
@@ -38,7 +38,7 @@ impl Bot {
         self.communications.push(communication);
     }
 
-    pub async fn start(&mut self) {
+    pub async fn run(&mut self) {
         for communication in self.communications.iter() {
             let communication = communication.clone();
             let event_tx = self.event_tx.clone();
@@ -47,23 +47,14 @@ impl Bot {
             });
         }
 
-        self.push_events().await;
+        loop {}
     }
 
-    async fn push_events(&mut self) {
-        while let Some(event) = self.event_rx.recv().await {
-            if event.content.is_stop() {
-                return;
-            }
-            for communication in self.communications.iter() {
-                let communication = communication.clone();
-                let event = event.clone();
-                tokio::spawn(async move {
-                    communication.push_event(event).await.unwrap();
-                });
-            }
-        }
-    }
+    pub fn register_action<A>() {}
+
+    pub fn register_event_generator(&self) {}
+
+    pub fn register_webhook(&self, path: String) {}
 }
 
 #[derive(Default)]
@@ -88,7 +79,7 @@ impl Default for MessageFormat {
 #[async_trait]
 #[clonable]
 pub trait Communication: Clone + Send + Sync {
-    async fn start(&self, event_tx: Sender<Event>) -> Result<()>;
+    async fn start(&self, event_rx: Sender<Event>) -> Result<()>;
     async fn push_event(&self, event: Event) -> Result<()>;
 }
 
@@ -203,4 +194,5 @@ pub struct Group {
     custom_field: HashMap<String, String>,
 }
 
+mod actions;
 mod communications;
