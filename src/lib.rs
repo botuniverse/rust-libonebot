@@ -14,6 +14,8 @@ pub struct OneBot {
 
     config: Config,
 
+    event_generator: fn(onebot: &OneBot) -> Result<()>,
+
     communications: Vec<Box<dyn Communication>>,
     event_tx: Sender<Event>,
     event_rx: Receiver<Event>,
@@ -27,6 +29,7 @@ impl OneBot {
         Self {
             user: User::default(),
             config: Config::default(),
+            event_generator: Self::default_event_generator,
             communications: Vec::new(),
             event_tx,
             event_rx,
@@ -52,7 +55,20 @@ impl OneBot {
 
     pub fn register_action<A>() {}
 
-    pub fn register_event_generator(&self) {}
+    pub fn register_event_generator(&mut self, event_generator: fn(onebot: &OneBot) -> Result<()>) {
+        self.event_generator = event_generator;
+    }
+
+    fn default_event_generator(onebot: &OneBot) -> Result<()> {
+        // TODO
+        Ok(())
+    }
+
+    pub fn emit_event(&self, event: Event) -> Result<()> {
+        self.event_tx.send(event)?;
+
+        Ok(())
+    }
 
     pub fn register_webhook(&self, path: String) {}
 }
@@ -80,10 +96,9 @@ impl Default for MessageFormat {
 #[clonable]
 pub trait Communication: Clone + Send + Sync {
     async fn start(&self, event_rx: Sender<Event>) -> Result<()>;
-    async fn push_event(&self, event: Event) -> Result<()>;
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Message {
     id: i64,
     source: MessageSource,
@@ -94,19 +109,19 @@ pub struct Message {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum MessageSource {
     Private(User),
     Group(Group),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum MessageContent {
     String(String),
     Array(Vec<MessageSegment>),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum MessageSegment {
     Text(String),
     Emoji(String),
@@ -120,14 +135,14 @@ pub enum MessageSegment {
     Custom(HashMap<String, String>),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Media {
     File(String),
     URL(String, bool, bool, bool), // url, cache, proxy, timeout
     Base64(String),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Event {
     time: SystemTime,
     content: EventContent,
@@ -135,7 +150,7 @@ pub struct Event {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum EventContent {
     Message(Message),
     Notice(Notice),
@@ -154,27 +169,27 @@ impl EventContent {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Notice {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Request {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Meta {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Action {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct User {
     id: i64,
     username: String,
@@ -185,7 +200,7 @@ pub struct User {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Group {
     id: i64,
 

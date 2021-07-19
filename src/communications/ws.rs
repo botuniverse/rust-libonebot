@@ -25,14 +25,10 @@ impl Communication for WebSocket {
 
         while let Ok((stream, _)) = listener.accept().await {
             let peer = stream.peer_addr()?;
-            let mut event_rx = event_tx.subscribe();
+            let event_rx = event_tx.subscribe();
             tokio::spawn(Self::accept_connection(peer, stream, event_rx));
         }
 
-        Ok(())
-    }
-
-    async fn push_event(&self, event: Event) -> Result<()> {
         Ok(())
     }
 }
@@ -43,18 +39,20 @@ impl WebSocket {
         stream: TcpStream,
         mut event_rx: Receiver<Event>,
     ) -> Result<()> {
-        let mut ws_stream = tokio_tungstenite::accept_async(stream).await?;
+        let ws_stream = tokio_tungstenite::accept_async(stream).await?;
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
         loop {
             tokio::select! {
                 event = event_rx.recv() => {
+                    // TODO
                     ws_sender.send(TungsteniteMessage::Text("received an event".to_string())).await?;
                 }
                 msg = ws_receiver.next() => {
                     match msg {
                         Some(msg) => {
                             let msg = msg?;
+                            // TODO
                             if msg.is_close() {
                                 break;
                             }
