@@ -1,3 +1,4 @@
+use actix_web::{HttpRequest, HttpResponse};
 use anyhow::Error;
 use async_trait::async_trait;
 use dyn_clonable::clonable;
@@ -5,7 +6,7 @@ use std::{
     collections::HashMap,
     time::{Duration, SystemTime},
 };
-use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::broadcast::Sender;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -14,25 +15,26 @@ pub struct OneBot {
 
     config: Config,
 
-    event_generator: fn(onebot: &OneBot) -> Result<()>,
+    event_generators: Vec<fn(event_sender: Sender<Event>) -> Result<()>>,
+    webhook_handlers: Vec<Webhook>,
 
     communications: Vec<Box<dyn Communication>>,
-    event_tx: Sender<Event>,
-    event_rx: Receiver<Event>,
+    event_sender: Sender<Event>,
 
     pub custom_field: HashMap<String, String>,
 }
 
 impl OneBot {
     pub fn new(event_capacity: usize) -> Self {
-        let (event_tx, event_rx) = tokio::sync::broadcast::channel(event_capacity);
+        let (event_sender, _) = tokio::sync::broadcast::channel(event_capacity);
+
         Self {
             user: User::default(),
             config: Config::default(),
-            event_generator: Self::default_event_generator,
+            event_generators: Vec::new(),
+            webhook_handlers: Vec::new(),
             communications: Vec::new(),
-            event_tx,
-            event_rx,
+            event_sender,
             custom_field: HashMap::new(),
         }
     }
@@ -42,35 +44,66 @@ impl OneBot {
     }
 
     pub async fn run(&mut self) {
+        for event_generator in self.event_generators.iter() {
+            let event_generator = event_generator.clone();
+            let event_sender = self.event_sender.clone();
+            tokio::spawn(async move {
+                (event_generator)(event_sender).unwrap();
+            });
+        }
+
         for communication in self.communications.iter() {
             let communication = communication.clone();
-            let event_tx = self.event_tx.clone();
+            let event_sender = self.event_sender.clone();
             tokio::spawn(async move {
-                communication.start(event_tx).await.unwrap();
+                communication.start(event_sender).await.unwrap();
             });
         }
 
         loop {}
     }
 
-    pub fn register_action<A>() {}
-
-    pub fn register_event_generator(&mut self, event_generator: fn(onebot: &OneBot) -> Result<()>) {
-        self.event_generator = event_generator;
+    pub fn register_event_generator(
+        &mut self,
+        event_generator: fn(event_sender: Sender<Event>) -> Result<()>,
+    ) {
+        self.event_generators.push(event_generator);
     }
 
-    fn default_event_generator(onebot: &OneBot) -> Result<()> {
-        // TODO
+    pub fn register_webhook(
+        &mut self,
+        path: String,
+        handler: fn(req: HttpRequest) -> Result<HttpResponse>,
+    ) {
+        self.webhook_handlers.push(Webhook::new(path, handler));
+    }
+
+    pub fn register_action<A, P, R>(action: fn(params: P)) -> Result<R> {
         Ok(())
     }
+}
 
-    pub fn emit_event(&self, event: Event) -> Result<()> {
-        self.event_tx.send(event)?;
+trait EmitEvent {
+    fn emit(&self, event: Event) -> Result<()>;
+}
+
+impl EmitEvent for Sender<Event> {
+    fn emit(&self, event: Event) -> Result<()> {
+        self.send(event)?;
 
         Ok(())
     }
+}
 
-    pub fn register_webhook(&self, path: String) {}
+struct Webhook {
+    path: String,
+    handler: fn(req: HttpRequest) -> Result<HttpResponse>,
+}
+
+impl Webhook {
+    fn new(path: String, handler: fn(req: HttpRequest) -> Result<HttpResponse>) -> Self {
+        Self { path, handler }
+    }
 }
 
 #[derive(Default)]
@@ -95,7 +128,7 @@ impl Default for MessageFormat {
 #[async_trait]
 #[clonable]
 pub trait Communication: Clone + Send + Sync {
-    async fn start(&self, event_rx: Sender<Event>) -> Result<()>;
+    async fn start(&self, event_receiver: Sender<Event>) -> Result<()>;
 }
 
 #[derive(Debug, Clone)]

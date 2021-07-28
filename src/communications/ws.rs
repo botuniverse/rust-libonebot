@@ -17,7 +17,7 @@ pub struct WebSocket {
 
 #[async_trait]
 impl Communication for WebSocket {
-    async fn start(&self, event_tx: Sender<Event>) -> Result<()> {
+    async fn start(&self, event_sender: Sender<Event>) -> Result<()> {
         let socket_addr = self.socket_addr.clone();
         let route = self.route.clone();
 
@@ -25,8 +25,8 @@ impl Communication for WebSocket {
 
         while let Ok((stream, _)) = listener.accept().await {
             let peer = stream.peer_addr()?;
-            let event_rx = event_tx.subscribe();
-            tokio::spawn(Self::accept_connection(peer, stream, event_rx));
+            let event_receiver = event_sender.subscribe();
+            tokio::spawn(Self::accept_connection(peer, stream, event_receiver));
         }
 
         Ok(())
@@ -37,14 +37,14 @@ impl WebSocket {
     async fn accept_connection(
         peer: SocketAddr,
         stream: TcpStream,
-        mut event_rx: Receiver<Event>,
+        mut event_receiver: Receiver<Event>,
     ) -> Result<()> {
         let ws_stream = tokio_tungstenite::accept_async(stream).await?;
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
         loop {
             tokio::select! {
-                event = event_rx.recv() => {
+                event = event_receiver.recv() => {
                     // TODO
                     ws_sender.send(TungsteniteMessage::Text("received an event".to_string())).await?;
                 }
