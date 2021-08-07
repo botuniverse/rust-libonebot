@@ -3,7 +3,7 @@
 use libonebot::*;
 
 // 类似 telegram 这样的有 long polling 机制的平台，可以注册 event generator 来获取事件
-async fn event_generator(event_sender: &Sender<Event>) -> Result<()> {
+async fn event_generator(onebot: &OneBot) -> Result<()> {
     loop {
         let updates = telegram::get_updates(); // 调用平台长轮询 api 获取事件
         for update in updates {
@@ -11,7 +11,7 @@ async fn event_generator(event_sender: &Sender<Event>) -> Result<()> {
             let event = convert_event(update);
 
             // 从一个 channel 发送事件，libonebot 的某个 task 会在另一端拿到，进行上报给用户的逻辑
-            event_sender.emit(event);
+            onebot.emit_event(event);
 
             // 对于不在核心事件集中的事件，需要考虑一下是用单独的 emit_extended_event
             // 还是直接让用户实现一个 Event: Serialize + Deserialize

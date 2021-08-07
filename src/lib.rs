@@ -16,6 +16,7 @@ pub struct OneBot {
     config: Config,
 
     event_generators: Vec<fn(event_sender: Sender<Event>) -> Result<()>>,
+    actions: HashMap<String, fn(param: GeneralParams)>,
     webhook_handlers: Vec<Webhook>,
 
     communications: Vec<Box<dyn Communication>>,
@@ -32,6 +33,7 @@ impl OneBot {
             user: User::default(),
             config: Config::default(),
             event_generators: Vec::new(),
+            actions: HashMap::new(),
             webhook_handlers: Vec::new(),
             communications: Vec::new(),
             event_sender,
@@ -78,8 +80,8 @@ impl OneBot {
         self.webhook_handlers.push(Webhook::new(path, handler));
     }
 
-    pub fn register_action<A, P, R>(action: fn(params: P)) -> Result<R> {
-        Ok(())
+    pub fn register_action<A: Action>(&mut self, action: fn(params: GeneralParams)) {
+        self.actions.insert(A::NAME, action);
     }
 }
 
@@ -217,10 +219,13 @@ pub struct Meta {
     custom_field: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Action {
-    custom_field: HashMap<String, String>,
+pub trait Action {
+    const NAME: String;
+    type Param;
+    fn parse_params(params: GeneralParams) -> Self::Param;
 }
+
+pub struct GeneralParams {}
 
 #[derive(Debug, Clone, Default)]
 pub struct User {
