@@ -17,7 +17,11 @@ pub struct WebSocket {
 
 #[async_trait]
 impl Communication for WebSocket {
-    async fn start(&self, event_sender: Sender<Event>) -> Result<()> {
+    async fn start(
+        &self,
+        action_sender: Sender<String>,
+        event_sender: Sender<Event>,
+    ) -> Result<()> {
         let socket_addr = self.socket_addr.clone();
         let route = self.route.clone();
 
@@ -25,8 +29,14 @@ impl Communication for WebSocket {
 
         while let Ok((stream, _)) = listener.accept().await {
             let peer = stream.peer_addr()?;
+            let action_sender = action_sender.clone();
             let event_receiver = event_sender.subscribe();
-            tokio::spawn(Self::accept_connection(peer, stream, event_receiver));
+            tokio::spawn(Self::accept_connection(
+                peer,
+                stream,
+                action_sender,
+                event_receiver,
+            ));
         }
 
         Ok(())
@@ -37,6 +47,7 @@ impl WebSocket {
     async fn accept_connection(
         peer: SocketAddr,
         stream: TcpStream,
+        action_sender: Sender<String>,
         mut event_receiver: Receiver<Event>,
     ) -> Result<()> {
         let ws_stream = tokio_tungstenite::accept_async(stream).await?;
@@ -45,19 +56,17 @@ impl WebSocket {
         loop {
             tokio::select! {
                 event = event_receiver.recv() => {
-                    // TODO
-                    ws_sender.send(TungsteniteMessage::Text("received an event".to_string())).await?;
+                    if let Ok(event) = event {
+                        ws_sender.send(TungsteniteMessage::Text(event.to_json())).await?;
+                    }
                 }
                 msg = ws_receiver.next() => {
-                    match msg {
-                        Some(msg) => {
-                            let msg = msg?;
-                            // TODO
-                            if msg.is_close() {
-                                break;
+                    if let Some(msg) = msg {
+                        if let Ok(msg) = msg {
+                            if let Ok(text) = msg.into_text() {
+                                action_sender.send(text);
                             }
-                        },
-                        None => break,
+                        }
                     }
                 }
             }

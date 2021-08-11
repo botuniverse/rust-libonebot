@@ -16,17 +16,19 @@ pub struct OneBot {
     config: Config,
 
     event_generators: Vec<fn(event_sender: Sender<Event>) -> Result<()>>,
-    actions: HashMap<String, fn(param: GeneralParams)>,
+    actions: HashMap<&'static str, fn(param: HashMap<String, String>)>,
     webhook_handlers: Vec<Webhook>,
 
     communications: Vec<Box<dyn Communication>>,
+    action_sender: Sender<String>,
     event_sender: Sender<Event>,
 
-    pub custom_field: HashMap<String, String>,
+    pub extended: HashMap<String, String>,
 }
 
 impl OneBot {
-    pub fn new(event_capacity: usize) -> Self {
+    pub fn new(action_capacity: usize, event_capacity: usize) -> Self {
+        let (action_sender, _) = tokio::sync::broadcast::channel(action_capacity);
         let (event_sender, _) = tokio::sync::broadcast::channel(event_capacity);
 
         Self {
@@ -36,8 +38,9 @@ impl OneBot {
             actions: HashMap::new(),
             webhook_handlers: Vec::new(),
             communications: Vec::new(),
+            action_sender,
             event_sender,
-            custom_field: HashMap::new(),
+            extended: HashMap::new(),
         }
     }
 
@@ -56,9 +59,13 @@ impl OneBot {
 
         for communication in self.communications.iter() {
             let communication = communication.clone();
+            let action_sender = self.action_sender.clone();
             let event_sender = self.event_sender.clone();
             tokio::spawn(async move {
-                communication.start(event_sender).await.unwrap();
+                communication
+                    .start(action_sender, event_sender)
+                    .await
+                    .unwrap();
             });
         }
 
@@ -80,7 +87,7 @@ impl OneBot {
         self.webhook_handlers.push(Webhook::new(path, handler));
     }
 
-    pub fn register_action<A: Action>(&mut self, action: fn(params: GeneralParams)) {
+    pub fn register_action<A: Action>(&mut self, action: fn(params: HashMap<String, String>)) {
         self.actions.insert(A::NAME, action);
     }
 }
@@ -113,7 +120,7 @@ struct Config {
     message_format: MessageFormat,
     rate_limit: Duration,
 
-    pub custom_field: HashMap<String, String>,
+    pub extended: HashMap<String, String>,
 }
 
 pub enum MessageFormat {
@@ -130,7 +137,11 @@ impl Default for MessageFormat {
 #[async_trait]
 #[clonable]
 pub trait Communication: Clone + Send + Sync {
-    async fn start(&self, event_receiver: Sender<Event>) -> Result<()>;
+    async fn start(
+        &self,
+        action_receiver: Sender<String>,
+        event_receiver: Sender<Event>,
+    ) -> Result<()>;
 }
 
 #[derive(Debug, Clone)]
@@ -141,7 +152,7 @@ pub struct Message {
 
     content: MessageContent,
 
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +193,13 @@ pub struct Event {
     time: SystemTime,
     content: EventContent,
 
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
+}
+
+impl Event {
+    fn to_json(&self) -> String {
+        String::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -206,26 +223,24 @@ impl EventContent {
 
 #[derive(Debug, Clone)]
 pub struct Notice {
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Request {
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Meta {
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
 }
 
 pub trait Action {
-    const NAME: String;
-    type Param;
-    fn parse_params(params: GeneralParams) -> Self::Param;
+    const NAME: &'static str;
+    type Params;
+    fn parse_params(params: HashMap<String, String>) -> Self::Params;
 }
-
-pub struct GeneralParams {}
 
 #[derive(Debug, Clone, Default)]
 pub struct User {
@@ -235,7 +250,7 @@ pub struct User {
     nickname: String,
     display_name: String,
 
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -244,7 +259,7 @@ pub struct Group {
 
     name: String,
 
-    custom_field: HashMap<String, String>,
+    extended: HashMap<String, String>,
 }
 
 mod actions;
