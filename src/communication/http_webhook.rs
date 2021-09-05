@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 #[derive(Clone)]
-pub struct HTTPPost {
+pub struct HTTPWebHook {
     post_url: String,
     timeout: Duration,
     secret: String,

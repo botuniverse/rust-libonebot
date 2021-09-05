@@ -1,62 +1,54 @@
-use actix_web::{HttpRequest, HttpResponse};
 use anyhow::Error;
-use async_trait::async_trait;
-use dyn_clonable::clonable;
-use std::{
-    collections::HashMap,
-    time::{Duration, SystemTime},
-};
-use tokio::sync::broadcast::Sender;
+use serde::Serialize;
+use std::{collections::HashMap, fmt::Debug, time::Duration};
 
-type Result<T> = std::result::Result<T, Error>;
+pub use tokio::sync::broadcast::{Receiver, Sender};
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct OneBot {
     user: User,
 
     config: Config,
 
-    event_generators: Vec<fn(event_sender: Sender<Event>) -> Result<()>>,
-    actions: HashMap<&'static str, fn(param: HashMap<String, String>)>,
-    webhook_handlers: Vec<Webhook>,
+    event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
+    actions: HashMap<&'static str, fn(param: HashMap<&str, String>)>,
+    action_processors: Vec<Box<dyn Fn(Receiver<String>) -> Result<()>>>,
 
     communications: Vec<Box<dyn Communication>>,
     action_sender: Sender<String>,
+    action_receiver: Receiver<String>,
     event_sender: Sender<Event>,
+    event_receiver: Receiver<Event>,
 
     pub extended: HashMap<String, String>,
 }
 
 impl OneBot {
     pub fn new(action_capacity: usize, event_capacity: usize) -> Self {
-        let (action_sender, _) = tokio::sync::broadcast::channel(action_capacity);
-        let (event_sender, _) = tokio::sync::broadcast::channel(event_capacity);
+        let (action_sender, action_receiver) = tokio::sync::broadcast::channel(action_capacity);
+        let (event_sender, event_receiver) = tokio::sync::broadcast::channel(event_capacity);
 
         Self {
             user: User::default(),
             config: Config::default(),
-            event_generators: Vec::new(),
+            event_generator: Box::new(Self::default_event_generator),
             actions: HashMap::new(),
-            webhook_handlers: Vec::new(),
+            action_processors: Vec::new(),
             communications: Vec::new(),
             action_sender,
+            action_receiver,
             event_sender,
+            event_receiver,
             extended: HashMap::new(),
         }
     }
 
-    pub fn add_communication(&mut self, communication: Box<dyn Communication>) {
-        self.communications.push(communication);
+    pub fn add_communication<C: 'static + Communication>(&mut self, communication: C) {
+        self.communications.push(Box::new(communication));
     }
 
     pub async fn run(&mut self) {
-        for event_generator in self.event_generators.iter() {
-            let event_generator = event_generator.clone();
-            let event_sender = self.event_sender.clone();
-            tokio::spawn(async move {
-                (event_generator)(event_sender).unwrap();
-            });
-        }
-
         for communication in self.communications.iter() {
             let communication = communication.clone();
             let action_sender = self.action_sender.clone();
@@ -69,188 +61,64 @@ impl OneBot {
             });
         }
 
-        loop {}
+        (self.event_generator)(self.event_sender.clone()).unwrap();
     }
 
-    pub fn register_event_generator(
+    pub fn register_event_generator<F: 'static + Fn(Sender<Event>) -> Result<()>>(
         &mut self,
-        event_generator: fn(event_sender: Sender<Event>) -> Result<()>,
+        event_generator: F,
     ) {
-        self.event_generators.push(event_generator);
+        self.event_generator = Box::new(event_generator);
     }
 
-    pub fn register_webhook(
-        &mut self,
-        path: String,
-        handler: fn(req: HttpRequest) -> Result<HttpResponse>,
-    ) {
-        self.webhook_handlers.push(Webhook::new(path, handler));
-    }
-
-    pub fn register_action<A: Action>(&mut self, action: fn(params: HashMap<String, String>)) {
-        self.actions.insert(A::NAME, action);
-    }
-}
-
-trait EmitEvent {
-    fn emit(&self, event: Event) -> Result<()>;
-}
-
-impl EmitEvent for Sender<Event> {
-    fn emit(&self, event: Event) -> Result<()> {
-        self.send(event)?;
-
+    fn default_event_generator(event_sender: Sender<Event>) -> Result<()> {
         Ok(())
     }
-}
 
-struct Webhook {
-    path: String,
-    handler: fn(req: HttpRequest) -> Result<HttpResponse>,
-}
+    pub fn new_event(&self, content: EventContent) -> Event {
+        Event::new(content, self.user.clone())
+    }
 
-impl Webhook {
-    fn new(path: String, handler: fn(req: HttpRequest) -> Result<HttpResponse>) -> Self {
-        Self { path, handler }
+    pub fn register_action<A: Action>(&mut self, action: fn(params: HashMap<&str, String>)) {
+        self.actions.insert(A::NAME, action);
+    }
+
+    pub fn register_action_processor(
+        &mut self,
+        action_processor: Box<dyn Fn(Receiver<String>) -> Result<()>>,
+    ) {
+        self.action_processors.push(action_processor);
     }
 }
 
 #[derive(Default)]
 struct Config {
-    message_format: MessageFormat,
     rate_limit: Duration,
 
     pub extended: HashMap<String, String>,
 }
 
-pub enum MessageFormat {
-    String,
-    Array,
-}
-
-impl Default for MessageFormat {
-    fn default() -> Self {
-        MessageFormat::String
-    }
-}
-
-#[async_trait]
-#[clonable]
-pub trait Communication: Clone + Send + Sync {
-    async fn start(
-        &self,
-        action_receiver: Sender<String>,
-        event_receiver: Sender<Event>,
-    ) -> Result<()>;
-}
-
-#[derive(Debug, Clone)]
-pub struct Message {
-    id: i64,
-    source: MessageSource,
-    sender: User,
-
-    content: MessageContent,
-
-    extended: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone)]
-pub enum MessageSource {
-    Private(User),
-    Group(Group),
-}
-
-#[derive(Debug, Clone)]
-pub enum MessageContent {
-    String(String),
-    Array(Vec<MessageSegment>),
-}
-
-#[derive(Debug, Clone)]
-pub enum MessageSegment {
-    Text(String),
-    Emoji(String),
-    Image(Media),
-    Record(Media),
-    Video(Media),
-    At(User),
-    Location(f64, f64), // lat, lon
-    Reply(i64),
-    Foward(i64),
-    Custom(HashMap<String, String>),
-}
-
-#[derive(Debug, Clone)]
-pub enum Media {
-    File(String),
-    URL(String, bool, bool, bool), // url, cache, proxy, timeout
-    Base64(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct Event {
-    time: SystemTime,
-    content: EventContent,
-
-    extended: HashMap<String, String>,
-}
-
-impl Event {
-    fn to_json(&self) -> String {
-        String::new()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum EventContent {
-    Message(Message),
-    Notice(Notice),
-    Request(Request),
-    Meta(Meta),
-    Stop,
-}
-
-impl EventContent {
-    fn is_stop(&self) -> bool {
-        if let Self::Stop = self {
-            true
-        } else {
-            false
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Notice {
-    extended: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Request {
-    extended: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Meta {
-    extended: HashMap<String, String>,
-}
-
-pub trait Action {
-    const NAME: &'static str;
-    type Params;
-    fn parse_params(params: HashMap<String, String>) -> Self::Params;
-}
-
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct User {
-    id: i64,
+    id: String,
     username: String,
 
     nickname: String,
     display_name: String,
 
     extended: HashMap<String, String>,
+}
+
+impl User {
+    fn new(id: String) -> Self {
+        Self {
+            id,
+            username: String::new(),
+            nickname: String::new(),
+            display_name: String::new(),
+            extended: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -262,5 +130,14 @@ pub struct Group {
     extended: HashMap<String, String>,
 }
 
-mod actions;
-mod communications;
+pub mod action;
+pub use action::Action;
+
+pub mod communication;
+pub use communication::Communication;
+
+pub mod event;
+pub use event::{Event, EventContent};
+
+pub mod message;
+pub use message::{Message, MessageSegment};
