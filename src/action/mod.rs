@@ -1,19 +1,18 @@
+use serde::Deserialize;
 use std::collections::HashMap;
 
-pub trait Action {
-    const NAME: &'static str;
-    type Params;
-    fn parse_params(params: HashMap<&str, String>) -> Self::Params;
+#[derive(Clone)]
+pub struct Action {
+    pub action: fn(_: HashMap<&str, String>),
 }
 
-pub struct SendMessage {}
-
-pub struct SendMessageParams {}
-
-impl Action for SendMessageParams {
-    const NAME: &'static str = "send_message";
-    type Params = SendMessageParams;
-    fn parse_params(p: HashMap<&str, String>) -> Self::Params {
-        Self::Params {}
+impl From<fn(_: HashMap<&str, String>)> for Action {
+    fn from(action: fn(_: HashMap<&str, String>)) -> Self {
+        Self { action }
     }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ActionJson {
+    pub action: String,
 }

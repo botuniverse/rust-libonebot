@@ -12,8 +12,7 @@ pub struct OneBot {
     config: Config,
 
     event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
-    actions: HashMap<&'static str, fn(param: HashMap<&str, String>)>,
-    action_processors: Vec<Box<dyn Fn(Receiver<String>) -> Result<()>>>,
+    actions: HashMap<String, Action>,
 
     communications: Vec<Box<dyn Communication>>,
     action_sender: Sender<String>,
@@ -34,7 +33,6 @@ impl OneBot {
             config: Config::default(),
             event_generator: Box::new(Self::default_event_generator),
             actions: HashMap::new(),
-            action_processors: Vec::new(),
             communications: Vec::new(),
             action_sender,
             action_receiver,
@@ -61,6 +59,22 @@ impl OneBot {
             });
         }
 
+        let mut action_receiver = self.action_sender.subscribe();
+        let actions = self.actions.clone();
+        tokio::spawn(async move {
+            loop {
+                let action_json = action_receiver.recv().await.unwrap();
+                let action = actions
+                    .get(
+                        &serde_json::from_str::<action::ActionJson>(&action_json)
+                            .unwrap()
+                            .action,
+                    )
+                    .unwrap();
+                (action.action)(HashMap::new());
+            }
+        });
+
         (self.event_generator)(self.event_sender.clone()).unwrap();
     }
 
@@ -71,23 +85,16 @@ impl OneBot {
         self.event_generator = Box::new(event_generator);
     }
 
-    fn default_event_generator(event_sender: Sender<Event>) -> Result<()> {
+    fn default_event_generator(_: Sender<Event>) -> Result<()> {
         Ok(())
     }
 
-    pub fn new_event(&self, content: EventContent) -> Event {
-        Event::new(content, self.user.clone())
+    pub fn register_action(&mut self, name: String, action: fn(_: HashMap<&str, String>)) {
+        self.actions.insert(name, Action::from(action));
     }
 
-    pub fn register_action<A: Action>(&mut self, action: fn(params: HashMap<&str, String>)) {
-        self.actions.insert(A::NAME, action);
-    }
-
-    pub fn register_action_processor(
-        &mut self,
-        action_processor: Box<dyn Fn(Receiver<String>) -> Result<()>>,
-    ) {
-        self.action_processors.push(action_processor);
+    fn default_action_processor(_: String) -> Result<()> {
+        Ok(())
     }
 }
 

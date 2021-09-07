@@ -14,12 +14,12 @@ pub struct Event {
 }
 
 impl Event {
-    pub(crate) fn new(content: EventContent, bot_user: User) -> Self {
+    pub fn new(content: EventContent) -> Self {
         Self {
             time: Utc::now(),
             content,
 
-            bot_user,
+            bot_user: User::default(),
 
             extended: HashMap::new(),
         }
@@ -30,12 +30,12 @@ impl Event {
         return Ok(ret);
     }
 
-    fn detail_type(&self) -> &'static str {
-        ""
+    fn detail_type(&self) -> String {
+        String::new()
     }
 
-    fn sub_type(&self) -> &'static str {
-        ""
+    fn sub_type(&self) -> String {
+        String::new()
     }
 }
 
@@ -43,9 +43,9 @@ impl Event {
 struct EventJson {
     time: i64,
     self_id: String,
-    r#type: &'static str,
-    detail_type: &'static str,
-    sub_type: &'static str,
+    r#type: String,
+    detail_type: String,
+    sub_type: String,
 
     message: Option<Vec<MessageSegment>>,
     message_id: Option<String>,
@@ -85,7 +85,7 @@ pub enum EventContent {
 }
 
 impl EventContent {
-    fn r#type(&self) -> &'static str {
+    fn r#type(&self) -> String {
         match self {
             Self::Message(_) => "message",
             Self::Notice(_) => "notice",
@@ -93,6 +93,7 @@ impl EventContent {
             Self::Meta(_) => "meta",
             Self::Stop => "stop",
         }
+        .to_string()
     }
     fn is_stop(&self) -> bool {
         if let Self::Stop = self {
