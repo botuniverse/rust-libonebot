@@ -11,8 +11,7 @@ pub use tokio::sync::broadcast::{Receiver, Sender};
 pub struct OneBot {
     pub platform: String,
     pub config: Config,
-    pub logger: Logger,
-
+    // pub logger: Logger,
     event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
     action_handlers: HashMap<String, Action>,
 
@@ -57,7 +56,7 @@ impl OneBot {
         Ok(Self {
             platform: platform.to_string(),
             config,
-            logger: Logger {},
+            // logger: Logger {},
             event_generator: Box::new(Self::default_event_generator),
             action_handlers: HashMap::new(),
             comms,
@@ -155,9 +154,6 @@ pub use config::ConfigFile;
 
 pub mod event;
 pub use event::{Event, EventContent};
-
-pub mod log;
-pub use log::Logger;
 
 pub mod message;
 pub use message::{Message, MessageSegment};
