@@ -15,7 +15,7 @@ pub use ws_reverse::WebSocketReverse;
 
 #[async_trait]
 #[clonable]
-pub trait Communication: Clone + Debug + Send + Sync {
+pub trait Comm: Clone + Debug + Send + Sync {
     async fn start(
         &self,
         action_receiver: Sender<String>,

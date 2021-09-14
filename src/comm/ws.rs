@@ -1,4 +1,4 @@
-use crate::{Communication, Event, Result};
+use crate::{Comm, Event, Result};
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
@@ -11,21 +11,15 @@ use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 #[derive(Debug, Clone)]
 pub struct WebSocket {
     socket_addr: SocketAddr,
-    route: String,
-    access_token: String,
 }
 
 impl WebSocket {
-    pub fn new(socket_addr: SocketAddr, route: String, access_token: String) -> Self {
-        Self {
-            socket_addr,
-            route,
-            access_token,
-        }
+    pub fn new(socket_addr: SocketAddr) -> Self {
+        Self { socket_addr }
     }
 
     async fn accept_connection(
-        peer: SocketAddr,
+        _: SocketAddr,
         stream: TcpStream,
         action_sender: Sender<String>,
         mut event_receiver: Receiver<Event>,
@@ -39,7 +33,8 @@ impl WebSocket {
                 if let Ok(event) = event {
                     ws_sender
                         .send(TungsteniteMessage::Text(event.to_json().unwrap()))
-                        .await;
+                        .await
+                        .unwrap();
                 }
             }
         });
@@ -49,25 +44,22 @@ impl WebSocket {
             if let Some(msg) = msg {
                 if let Ok(msg) = msg {
                     if let Ok(text) = msg.into_text() {
-                        action_sender.send(text);
+                        action_sender.send(text).unwrap();
                     }
                 }
             }
         }
-
-        Ok(())
     }
 }
 
 #[async_trait]
-impl Communication for WebSocket {
+impl Comm for WebSocket {
     async fn start(
         &self,
         action_sender: Sender<String>,
         event_sender: Sender<Event>,
     ) -> Result<()> {
         let socket_addr = self.socket_addr.clone();
-        let route = self.route.clone();
 
         let listener = TcpListener::bind(&socket_addr).await?;
 

@@ -95,13 +95,6 @@ impl EventContent {
         }
         .to_string()
     }
-    fn is_stop(&self) -> bool {
-        if let Self::Stop = self {
-            true
-        } else {
-            false
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
