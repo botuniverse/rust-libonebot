@@ -81,7 +81,6 @@ pub enum EventContent {
     Notice(Notice),
     Request(Request),
     Meta(Meta),
-    Stop,
 }
 
 impl EventContent {
@@ -91,7 +90,6 @@ impl EventContent {
             Self::Notice(_) => "notice",
             Self::Request(_) => "request",
             Self::Meta(_) => "meta",
-            Self::Stop => "stop",
         }
         .to_string()
     }

@@ -3,11 +3,11 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Action {
-    pub action: fn(_: HashMap<&str, String>),
+    pub action: fn(_: serde_json::Value),
 }
 
-impl From<fn(_: HashMap<&str, String>)> for Action {
-    fn from(action: fn(_: HashMap<&str, String>)) -> Self {
+impl From<fn(_: serde_json::Value)> for Action {
+    fn from(action: fn(_: serde_json::Value)) -> Self {
         Self { action }
     }
 }
@@ -15,4 +15,5 @@ impl From<fn(_: HashMap<&str, String>)> for Action {
 #[derive(Deserialize)]
 pub(crate) struct ActionJson {
     pub action: String,
+    pub params: serde_json::Value,
 }

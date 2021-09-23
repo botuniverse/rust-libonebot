@@ -32,7 +32,14 @@ impl OneBot {
         if let Some(comm_methods) = config_file.comm_methods() {
             for comm_method in comm_methods {
                 match comm_method.r#type.as_str() {
-                    "http" => {}
+                    "http" => comms.push(Box::new(comm::HTTP::new(
+                        format!(
+                            "{}:{}",
+                            comm_method.host.clone().unwrap_or("127.0.0.1".to_string()),
+                            comm_method.port.unwrap_or(80)
+                        )
+                        .parse()?,
+                    ))),
                     "http_webhook" => {}
                     "ws" => comms.push(Box::new(comm::WebSocket::new(
                         format!(
@@ -86,15 +93,11 @@ impl OneBot {
         let action_handlers = self.action_handlers.clone();
         tokio::spawn(async move {
             loop {
-                let action_json = action_receiver.recv().await.unwrap();
-                let action = action_handlers
-                    .get(
-                        &serde_json::from_str::<action::ActionJson>(&action_json)
-                            .unwrap()
-                            .action,
-                    )
-                    .unwrap();
-                (action.action)(HashMap::new());
+                let s = action_receiver.recv().await.unwrap();
+                println!("{}", s);
+                let action_json = serde_json::from_str::<action::ActionJson>(&s).unwrap();
+                let action = action_handlers.get(&action_json.action).unwrap();
+                (action.action)(action_json.params);
             }
         });
 
@@ -115,10 +118,10 @@ impl OneBot {
     }
 
     fn default_event_generator(_: Sender<Event>) -> Result<()> {
-        Ok(())
+        loop {}
     }
 
-    pub fn register_action_handler(&mut self, name: String, action: fn(_: HashMap<&str, String>)) {
+    pub fn register_action_handler(&mut self, name: String, action: fn(_: serde_json::Value)) {
         self.action_handlers.insert(name, Action::from(action));
     }
 }

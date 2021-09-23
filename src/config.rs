@@ -13,8 +13,8 @@ impl Config {
             heartbeat: None,
             auth: Auth { access_token: None },
             channel_capacity: ChannelCapacity {
-                action: 0 as usize,
-                event: 0 as usize,
+                action: 100 as usize,
+                event: 100 as usize,
             },
         }
     }
