@@ -1,6 +1,7 @@
-use crate::{Comm, Event, Result};
+use crate::{Action, Comm, Event, Result};
 use async_trait::async_trait;
-use tokio::sync::broadcast::{Receiver, Sender};
+use std::collections::HashMap;
+use tokio::sync::broadcast::Sender;
 
 #[derive(Debug, Clone)]
 pub struct HTTPWebHook {
@@ -18,15 +19,17 @@ impl HTTPWebHook {
 impl Comm for HTTPWebHook {
     async fn start(
         &self,
-        _action_sender: Sender<String>,
+        _action_handlers: HashMap<String, Action>,
         event_sender: Sender<Event>,
+        platform: String,
     ) -> Result<()> {
         let mut event_receiver = event_sender.subscribe();
         let client = reqwest::Client::new();
         loop {
             let event = event_receiver.recv().await;
-            if let Ok(event) = event {
-                let resp = client
+            if let Ok(mut event) = event {
+                event.platform = platform.clone();
+                let _ = client
                     .post(&self.post_url)
                     .body(event.to_json().unwrap())
                     .send()

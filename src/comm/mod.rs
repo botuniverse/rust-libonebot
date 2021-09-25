@@ -1,7 +1,7 @@
-use crate::{Event, Result, Sender};
+use crate::{Action, Event, Result, Sender};
 use async_trait::async_trait;
 use dyn_clonable::clonable;
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 mod http;
 mod http_webhook;
@@ -18,7 +18,8 @@ pub use ws_reverse::WebSocketReverse;
 pub trait Comm: Clone + Debug + Send + Sync {
     async fn start(
         &self,
-        action_receiver: Sender<String>,
+        action_handlers: HashMap<String, Action>,
         event_receiver: Sender<Event>,
+        platform: String,
     ) -> Result<()>;
 }

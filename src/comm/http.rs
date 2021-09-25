@@ -1,7 +1,7 @@
-use crate::{Comm, Event, Result};
+use crate::{Action, Comm, Event, Result};
 use async_trait::async_trait;
-use std::net::SocketAddr;
-use tokio::sync::broadcast::{Receiver, Sender};
+use std::{collections::HashMap, net::SocketAddr};
+use tokio::sync::broadcast::Sender;
 use warp::Filter;
 
 #[derive(Debug, Clone)]
@@ -19,16 +19,19 @@ impl HTTP {
 impl Comm for HTTP {
     async fn start(
         &self,
-        action_sender: Sender<String>,
+        action_handlers: HashMap<String, Action>,
         _event_sender: Sender<Event>,
+        _platform: String,
     ) -> Result<()> {
         let handler = warp::post()
             .and(warp::body::bytes())
             .map(move |b: bytes::Bytes| {
-                action_sender
-                    .send(std::str::from_utf8(&b).unwrap().to_owned())
-                    .unwrap();
-                ""
+                let action_json = serde_json::from_str::<crate::action::ActionJson>(
+                    &std::str::from_utf8(&b).unwrap().to_owned(),
+                )
+                .unwrap();
+                let action = action_handlers.get(&action_json.action).unwrap();
+                (action.action)(action_json.params)
             });
 
         warp::serve(handler).run(self.socket_addr).await;

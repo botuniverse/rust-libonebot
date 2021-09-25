@@ -1,13 +1,12 @@
 use serde::Deserialize;
-use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Action {
-    pub action: fn(_: serde_json::Value),
+    pub action: fn(_: serde_json::Value) -> String,
 }
 
-impl From<fn(_: serde_json::Value)> for Action {
-    fn from(action: fn(_: serde_json::Value)) -> Self {
+impl From<fn(_: serde_json::Value) -> String> for Action {
+    fn from(action: fn(_: serde_json::Value) -> String) -> Self {
         Self { action }
     }
 }

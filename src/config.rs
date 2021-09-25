@@ -4,7 +4,7 @@ use serde::Deserialize;
 pub struct Config {
     pub heartbeat: Option<u32>,
     pub auth: Auth,
-    pub channel_capacity: ChannelCapacity,
+    pub channel_capacity: usize,
 }
 
 impl Config {
@@ -12,10 +12,7 @@ impl Config {
         Self {
             heartbeat: None,
             auth: Auth { access_token: None },
-            channel_capacity: ChannelCapacity {
-                action: 100 as usize,
-                event: 100 as usize,
-            },
+            channel_capacity: 100,
         }
     }
 

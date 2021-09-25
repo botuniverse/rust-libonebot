@@ -5,17 +5,23 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Event {
+    id: String,
+    pub platform: String,
+
     time: DateTime<Utc>,
     content: EventContent,
 
-    bot_user: User,
+    pub bot_user: User,
 
     extended: HashMap<&'static str, String>,
 }
 
 impl Event {
-    pub fn new(content: EventContent) -> Self {
+    pub fn new(id: String, content: EventContent) -> Self {
         Self {
+            id,
+            platform: String::new(),
+
             time: Utc::now(),
             content,
 
@@ -29,22 +35,17 @@ impl Event {
         let ret = serde_json::to_string(&EventJson::from(self.clone()))?;
         return Ok(ret);
     }
-
-    fn detail_type(&self) -> String {
-        String::new()
-    }
-
-    fn sub_type(&self) -> String {
-        String::new()
-    }
 }
 
 #[derive(Serialize)]
 struct EventJson {
+    id: String,
+    platform: String,
+
     time: i64,
     self_id: String,
     r#type: String,
-    detail_type: String,
+    detail_type: Option<String>,
     sub_type: String,
 
     message: Option<Vec<MessageSegment>>,
@@ -60,16 +61,50 @@ struct EventJson {
 impl From<Event> for EventJson {
     fn from(event: Event) -> Self {
         Self {
+            id: event.id,
+            platform: event.platform,
             time: event.time.timestamp(),
             self_id: event.bot_user.id.clone(),
             r#type: event.content.r#type(),
-            detail_type: event.detail_type(),
-            sub_type: event.sub_type(),
-            message: None,
-            message_id: None,
-            user_id: None,
+            detail_type: if let EventContent::Message(message) = &event.content {
+                use crate::message::MessageSource;
+                Some(
+                    match message.source {
+                        MessageSource::Private(_) => "private",
+                        MessageSource::Group(_) => "group",
+                    }
+                    .to_string(),
+                )
+            } else {
+                None
+            },
+            sub_type: String::new(),
+            message: if let EventContent::Message(message) = &event.content {
+                Some(message.content.clone())
+            } else {
+                None
+            },
+            message_id: if let EventContent::Message(message) = &event.content {
+                Some(message.id.clone())
+            } else {
+                None
+            },
+            user_id: if let EventContent::Message(message) = &event.content {
+                Some(message.sender.id.clone())
+            } else {
+                None
+            },
             alt_message: None,
-            group_id: None,
+            group_id: if let EventContent::Message(message) = &event.content {
+                use crate::message::MessageSource;
+                if let MessageSource::Group(group) = &message.source {
+                    Some(group.id.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            },
             flag: None,
         }
     }

@@ -12,12 +12,10 @@ pub struct OneBot {
     pub platform: String,
     pub config: Config,
     // pub logger: Logger,
-    event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
+    event_generator: Box<dyn Fn(Sender<Event>)>,
     action_handlers: HashMap<String, Action>,
 
     comms: Vec<Box<dyn Comm>>,
-    action_sender: Sender<String>,
-    _action_default_receiver: Receiver<String>,
     event_sender: Sender<Event>,
     _event_default_receiver: Receiver<Event>,
 
@@ -55,10 +53,8 @@ impl OneBot {
             }
         }
 
-        let (action_sender, _action_default_receiver) =
-            tokio::sync::broadcast::channel(config.channel_capacity.action);
         let (event_sender, _event_default_receiver) =
-            tokio::sync::broadcast::channel(config.channel_capacity.event);
+            tokio::sync::broadcast::channel(config.channel_capacity);
 
         Ok(Self {
             platform: platform.to_string(),
@@ -67,8 +63,6 @@ impl OneBot {
             event_generator: Box::new(Self::default_event_generator),
             action_handlers: HashMap::new(),
             comms,
-            action_sender,
-            _action_default_receiver,
             event_sender,
             _event_default_receiver,
             extended: HashMap::new(),
@@ -82,46 +76,38 @@ impl OneBot {
     pub async fn run(&mut self) {
         for comm in self.comms.iter() {
             let comm = comm.clone();
-            let action_sender = self.action_sender.clone();
+            let action_handlers = self.action_handlers.clone();
             let event_sender = self.event_sender.clone();
+            let platform = self.platform.clone();
             tokio::spawn(async move {
-                comm.start(action_sender, event_sender).await.unwrap();
+                comm.start(action_handlers, event_sender, platform.clone())
+                    .await
+                    .unwrap();
             });
         }
 
-        let mut action_receiver = self.action_sender.subscribe();
-        let action_handlers = self.action_handlers.clone();
-        tokio::spawn(async move {
-            loop {
-                let s = action_receiver.recv().await.unwrap();
-                println!("{}", s);
-                let action_json = serde_json::from_str::<action::ActionJson>(&s).unwrap();
-                let action = action_handlers.get(&action_json.action).unwrap();
-                (action.action)(action_json.params);
-            }
-        });
-
         // logger: "start"
 
-        (self.event_generator)(self.event_sender.clone()).unwrap();
+        (self.event_generator)(self.event_sender.clone());
 
         // logger: "shutdown"
     }
 
     pub fn shutdown(&self) {}
 
-    pub fn register_event_generator<F: 'static + Fn(Sender<Event>) -> Result<()>>(
-        &mut self,
-        event_generator: F,
-    ) {
+    pub fn register_event_generator<F: 'static + Fn(Sender<Event>)>(&mut self, event_generator: F) {
         self.event_generator = Box::new(event_generator);
     }
 
-    fn default_event_generator(_: Sender<Event>) -> Result<()> {
+    fn default_event_generator(_: Sender<Event>) {
         loop {}
     }
 
-    pub fn register_action_handler(&mut self, name: String, action: fn(_: serde_json::Value)) {
+    pub fn register_action_handler(
+        &mut self,
+        name: String,
+        action: fn(_: serde_json::Value) -> String,
+    ) {
         self.action_handlers.insert(name, Action::from(action));
     }
 }
@@ -129,17 +115,29 @@ impl OneBot {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct User {
     id: String,
-    username: String,
+    pub username: String,
 
-    nickname: String,
-    display_name: String,
+    pub nickname: String,
+    pub display_name: String,
 
     extended: HashMap<String, String>,
 }
 
+impl User {
+    pub fn new(id: String) -> Self {
+        Self {
+            id,
+            username: String::new(),
+            nickname: String::new(),
+            display_name: String::new(),
+            extended: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Group {
-    id: i64,
+    id: String,
 
     name: String,
 

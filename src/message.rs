@@ -4,13 +4,31 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Message {
-    id: i64,
-    source: MessageSource,
-    sender: User,
+    pub id: String,
 
-    content: Vec<MessageSegment>,
+    pub source: MessageSource,
+    pub sender: User,
+
+    pub content: Vec<MessageSegment>,
 
     extended: HashMap<String, String>,
+}
+
+impl Message {
+    pub fn new(id: String, source: MessageSource, sender: User) -> Self {
+        Self {
+            id,
+            source,
+            sender,
+            content: Vec::new(),
+            extended: HashMap::new(),
+        }
+    }
+
+    pub fn append(mut self, seg: MessageSegment) -> Self {
+        self.content.push(seg);
+        self
+    }
 }
 
 #[derive(Debug, Clone)]
