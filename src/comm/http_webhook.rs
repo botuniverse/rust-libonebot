@@ -51,7 +51,7 @@ impl Comm for HTTPWebHook {
         loop {
             let event = event_receiver.recv().await;
             if let Ok(mut event) = event {
-                event.platform = platform.clone();
+                event = event.platform(&platform);
                 let _ = client
                     .post(&self.post_url)
                     .body(event.to_json().unwrap())

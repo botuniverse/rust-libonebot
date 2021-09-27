@@ -18,7 +18,7 @@ pub struct OneBot {
     event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
     action_handlers: HashMap<String, Action>,
 
-    comms: Vec<Box<dyn Comm>>,
+    comms: HashMap<String, Box<dyn Comm>>,
 
     event_sender: Sender<Event>,
     _event_default_receiver: Receiver<Event>,
@@ -35,7 +35,7 @@ impl OneBot {
             logger: Logger::new(),
             event_generator: Box::new(Self::default_event_generator),
             action_handlers: HashMap::new(),
-            comms: Vec::new(),
+            comms: HashMap::new(),
             event_sender,
             _event_default_receiver,
         }
@@ -46,74 +46,32 @@ impl OneBot {
         self
     }
 
-    fn add_comm_box(mut self, comm: Box<dyn Comm>) -> Self {
-        self.comms.push(comm);
+    fn add_comm_box<S: Display>(mut self, name: &S, comm: Box<dyn Comm>) -> Self {
+        self.comms.insert(name.to_string(), comm);
         self
     }
 
-    pub fn add_comm<C: 'static + Comm>(self, comm: C) -> Self {
-        self.add_comm_box(Box::new(comm))
+    pub fn add_comm<S: Display, C: 'static + Comm>(self, name: &S, comm: C) -> Self {
+        self.add_comm_box(&name, Box::new(comm))
     }
 
     pub fn init_from_file<F: ConfigFile>(mut self, config_file: F) -> Result<Self> {
         self = self.config(Config::from_config_file(&config_file)?);
 
-        self.comms = Vec::new();
+        self.comms = HashMap::new();
 
         if let Some(comm_methods) = config_file.comm_methods() {
-            for comm_method in comm_methods {
-                self = self.add_comm_box(comm::from_config_file_comm_method(comm_method)?);
+            for (comm_name, comm_method) in comm_methods {
+                self =
+                    self.add_comm_box(&comm_name, comm::from_config_file_comm_method(comm_method)?);
             }
         }
 
         Ok(self)
     }
 
-    /*pub fn new<S: Display, F: ConfigFile>(platform: S, config_file: F) -> Result<Self> {
-        let config = Config::from_config_file(&config_file)?;
-
-        let mut comms: Vec<Box<dyn Comm>> = Vec::new();
-        if let Some(comm_methods) = config_file.comm_methods() {
-            for comm_method in comm_methods {
-                match comm_method.r#type.as_str() {
-                    "http" => comms.push(Box::new(comm::HTTP::new(
-                        format!(
-                            "{}:{}",
-                            comm_method.host.clone().unwrap_or("127.0.0.1".to_string()),
-                            comm_method.port.unwrap_or(80)
-                        )
-                        .parse()?,
-                    ))),
-                    "http_webhook" => {}
-                    "ws" => comms.push(Box::new(comm::WebSocket::new(
-                        format!(
-                            "{}:{}",
-                            comm_method.host.clone().unwrap_or("127.0.0.1".to_string()),
-                            comm_method.port.unwrap_or(80)
-                        )
-                        .parse()?,
-                    ))),
-                    "ws_reverse" => {}
-                    _ => return Err(Error::msg("config error: unsupport communication type")),
-                };
-            }
-        }
-
-        Ok(Self {
-            platform: platform.to_string(),
-            config,
-            // logger: Logger {},
-            event_generator: Box::new(Self::default_event_generator),
-            action_handlers: HashMap::new(),
-            comms,
-            event_sender,
-            _event_default_receiver,
-            extended: HashMap::new(),
-        })
-    }*/
-
     pub async fn run(&mut self) {
-        for comm in self.comms.iter() {
+        for (_, comm) in self.comms.iter() {
             let comm = comm.clone();
             let action_handlers = self.action_handlers.clone();
             let event_sender = self.event_sender.clone();
@@ -145,16 +103,17 @@ impl OneBot {
         loop {}
     }
 
-    pub fn register_action_handler(
+    pub fn register_action_handler<S: Display>(
         &mut self,
-        name: String,
+        name: S,
         action: fn(_: serde_json::Value) -> String,
     ) {
-        self.action_handlers.insert(name, Action::from(action));
+        self.action_handlers
+            .insert(name.to_string(), Action::from(action));
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct User {
     id: String,
     pub username: String,
@@ -166,9 +125,9 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(id: String) -> Self {
+    pub fn new<S: Display>(id: S) -> Self {
         Self {
-            id,
+            id: id.to_string(),
             username: String::new(),
             nickname: String::new(),
             display_name: String::new(),

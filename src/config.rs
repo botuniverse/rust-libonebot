@@ -1,6 +1,8 @@
 use crate::{Error, Result};
 use serde::Deserialize;
+use std::{collections::HashMap, fmt::Debug};
 
+#[derive(Debug)]
 pub struct Config {
     pub heartbeat: Option<u32>,
     pub auth: Auth,
@@ -33,44 +35,51 @@ impl Config {
             }
         }
 
+        if let Some(auth) = config_file.auth() {
+            if let Some(access_token) = &auth.access_token {
+                config.auth.access_token = Some(access_token.clone());
+            }
+        }
+
+        if let Some(channel_capacity) = config_file.channel_capacity() {
+            if let Some(capacity) = channel_capacity.event {
+                config.channel_capacity = capacity;
+            }
+        }
+
         Ok(config)
     }
 }
 
+#[derive(Debug)]
 pub struct Auth {
     pub access_token: Option<String>,
 }
 
-pub struct ChannelCapacity {
-    pub action: usize,
-    pub event: usize,
-}
-
-pub trait ConfigFile {
+pub trait ConfigFile: Debug {
     fn heartbeat(&self) -> Option<&ConfigFileHeartBeat>;
     fn auth(&self) -> Option<&ConfigFileAuth>;
     fn channel_capacity(&self) -> Option<&ConfigFileChannelCapacity>;
-    fn comm_methods(&self) -> Option<&Vec<ConfigFileCommMethod>>;
+    fn comm_methods(&self) -> Option<&HashMap<String, ConfigFileCommMethod>>;
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigFileHeartBeat {
     pub enabled: bool,
     pub interval: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigFileAuth {
     pub access_token: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigFileChannelCapacity {
-    pub action: Option<usize>,
     pub event: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigFileCommMethod {
     pub r#type: String,
 
@@ -85,12 +94,12 @@ pub struct ConfigFileCommMethod {
     pub reconnect_interval: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct DefaultConfigFile {
     heartbeat: Option<ConfigFileHeartBeat>,
     auth: Option<ConfigFileAuth>,
     channel_capacity: Option<ConfigFileChannelCapacity>,
-    comm_methods: Option<Vec<ConfigFileCommMethod>>,
+    comm_method: Option<HashMap<String, ConfigFileCommMethod>>,
 }
 
 impl DefaultConfigFile {
@@ -99,7 +108,7 @@ impl DefaultConfigFile {
             heartbeat: None,
             auth: None,
             channel_capacity: None,
-            comm_methods: None,
+            comm_method: None,
         }
     }
 }
@@ -123,8 +132,8 @@ impl ConfigFile for DefaultConfigFile {
             None => None,
         }
     }
-    fn comm_methods(&self) -> Option<&Vec<ConfigFileCommMethod>> {
-        match &self.comm_methods {
+    fn comm_methods(&self) -> Option<&HashMap<String, ConfigFileCommMethod>> {
+        match &self.comm_method {
             Some(comm_methods) => Some(&comm_methods),
             None => None,
         }

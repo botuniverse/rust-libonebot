@@ -1,39 +1,93 @@
 use crate::{Message, MessageSegment, Result, User};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub struct Event {
-    id: String,
+    pub id: String,
     pub platform: String,
 
-    time: DateTime<Utc>,
-    content: EventContent,
+    pub time: DateTime<Utc>,
+    pub content: EventContent,
 
     pub bot_user: User,
-
-    extended: HashMap<&'static str, String>,
 }
 
 impl Event {
-    pub fn new(id: String, content: EventContent) -> Self {
-        Self {
-            id,
+    pub fn new<S: Display>(id: S) -> EventBuilder {
+        EventBuilder {
+            id: id.to_string(),
             platform: String::new(),
-
             time: Utc::now(),
-            content,
+            bot_user: User::new("-1"),
+        }
+    }
 
-            bot_user: User::default(),
+    pub fn platform<S: Display>(mut self, platform: S) -> Self {
+        self.platform = platform.to_string();
+        self
+    }
 
-            extended: HashMap::new(),
+    pub fn time(mut self, time: DateTime<Utc>) -> Self {
+        self.time = time;
+        self
+    }
+
+    pub fn bot_user<S: Display>(mut self, user: User) -> Self {
+        self.bot_user = user;
+        self
+    }
+
+    pub fn message(self, message: Message) -> Event {
+        Event {
+            id: self.id,
+            platform: self.platform,
+            time: self.time,
+            content: EventContent::Message(message),
+            bot_user: self.bot_user,
         }
     }
 
     pub(crate) fn to_json(&self) -> Result<String> {
         let ret = serde_json::to_string(&EventJson::from(self.clone()))?;
         return Ok(ret);
+    }
+}
+
+pub struct EventBuilder {
+    id: String,
+    platform: String,
+
+    time: DateTime<Utc>,
+
+    bot_user: User,
+}
+
+impl EventBuilder {
+    pub fn platform<S: Display>(mut self, platform: S) -> Self {
+        self.platform = platform.to_string();
+        self
+    }
+
+    pub fn time(mut self, time: DateTime<Utc>) -> Self {
+        self.time = time;
+        self
+    }
+
+    pub fn bot_user<S: Display>(mut self, user: User) -> Self {
+        self.bot_user = user;
+        self
+    }
+
+    pub fn message(self, message: Message) -> Event {
+        Event {
+            id: self.id,
+            platform: self.platform,
+            time: self.time,
+            content: EventContent::Message(message),
+            bot_user: self.bot_user,
+        }
     }
 }
 

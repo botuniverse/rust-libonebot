@@ -33,7 +33,7 @@ impl WebSocket {
         Ok(Box::new(Self::new(format!(
             "{}:{}",
             comm_method.host.clone().unwrap_or("127.0.0.1".to_string()),
-            comm_method.port.unwrap_or(5700)
+            comm_method.port.unwrap_or(6700)
         ))?))
     }
 }
@@ -62,7 +62,7 @@ impl Comm for WebSocket {
                     tokio::select! {
                         event = event_receiver.recv() => {
                             if let Ok(mut event) = event {
-                                event.platform = platform.clone();
+                                event = event.platform(&platform);
                                 ws_sender
                                     .send(TungsteniteMessage::Text(event.to_json().unwrap()))
                                     .await

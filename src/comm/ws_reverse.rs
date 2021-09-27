@@ -47,7 +47,7 @@ impl Comm for WebSocketReverse {
             tokio::select! {
                 event = event_receiver.recv() => {
                     if let Ok(mut event) = event {
-                        event.platform = platform.clone();
+                        event = event.platform(&platform);
                         ws_sender
                             .send(TungsteniteMessage::Text(event.to_json().unwrap()))
                             .await

@@ -1,6 +1,6 @@
 use crate::{Group, User};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub struct Message {
@@ -10,23 +10,66 @@ pub struct Message {
     pub sender: User,
 
     pub content: Vec<MessageSegment>,
-
-    extended: HashMap<String, String>,
 }
 
 impl Message {
-    pub fn new(id: String, source: MessageSource, sender: User) -> Self {
-        Self {
-            id,
-            source,
-            sender,
+    pub fn new<S: Display>(id: S) -> MessageBuilder {
+        MessageBuilder {
+            id: id.to_string(),
             content: Vec::new(),
-            extended: HashMap::new(),
+        }
+    }
+    pub fn from_private(self, user: User) -> Message {
+        Message {
+            id: self.id,
+            source: MessageSource::Private(user.clone()),
+            sender: user,
+            content: self.content,
         }
     }
 
-    pub fn append(mut self, seg: MessageSegment) -> Self {
-        self.content.push(seg);
+    pub fn from_group(self, group: Group, sender: User) -> Message {
+        Message {
+            id: self.id,
+            source: MessageSource::Group(group),
+            sender,
+            content: self.content,
+        }
+    }
+
+    pub fn text<S: Display>(mut self, text: S) -> Self {
+        self.content.push(MessageSegment::Text(text.to_string()));
+        self
+    }
+}
+
+pub struct MessageBuilder {
+    id: String,
+
+    content: Vec<MessageSegment>,
+}
+
+impl MessageBuilder {
+    pub fn from_private(self, user: User) -> Message {
+        Message {
+            id: self.id,
+            source: MessageSource::Private(user.clone()),
+            sender: user,
+            content: self.content,
+        }
+    }
+
+    pub fn from_group(self, group: Group, sender: User) -> Message {
+        Message {
+            id: self.id,
+            source: MessageSource::Group(group),
+            sender,
+            content: self.content,
+        }
+    }
+
+    pub fn text<S: Display>(mut self, text: S) -> Self {
+        self.content.push(MessageSegment::Text(text.to_string()));
         self
     }
 }
