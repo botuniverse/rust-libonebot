@@ -12,7 +12,7 @@ impl Config {
         Self {
             heartbeat: None,
             auth: Auth { access_token: None },
-            channel_capacity: 100,
+            channel_capacity: crate::DEFAULT_CHANNEL_CAPACITY,
         }
     }
 

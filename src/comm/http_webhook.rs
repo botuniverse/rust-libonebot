@@ -1,17 +1,40 @@
-use crate::{Action, Comm, Event, Result};
+use crate::{config::ConfigFileCommMethod, Action, Comm, Event, Result};
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 use tokio::sync::broadcast::Sender;
 
 #[derive(Debug, Clone)]
 pub struct HTTPWebHook {
     post_url: String,
-    secret: String,
+    secret: Option<String>,
 }
 
 impl HTTPWebHook {
-    pub fn new(post_url: String, secret: String) -> Self {
-        Self { post_url, secret }
+    pub fn new<S: Display>(post_url: S) -> Self {
+        Self {
+            post_url: post_url.to_string(),
+            secret: None,
+        }
+    }
+
+    pub fn secret<S: Display>(mut self, secret: S) -> Self {
+        self.secret = Some(secret.to_string());
+        self
+    }
+
+    pub(crate) fn from_config_file_comm_method(
+        comm_method: &ConfigFileCommMethod,
+    ) -> Result<Box<dyn Comm>> {
+        let mut http_webhook = Self::new(
+            comm_method
+                .url
+                .clone()
+                .unwrap_or("127.0.0.1:5700".to_string()),
+        );
+        if let Some(secret) = comm_method.secret.clone() {
+            http_webhook = http_webhook.secret(secret);
+        }
+        Ok(Box::new(http_webhook))
     }
 }
 

@@ -8,22 +8,68 @@ use thiserror::Error;
 
 pub use tokio::sync::broadcast::{Receiver, Sender};
 
+static DEFAULT_CHANNEL_CAPACITY: usize = 128 as usize;
+
 pub struct OneBot {
-    pub platform: String,
-    pub config: Config,
-    // pub logger: Logger,
-    event_generator: Box<dyn Fn(Sender<Event>)>,
+    platform: String,
+    config: Config,
+    logger: Logger,
+
+    event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
     action_handlers: HashMap<String, Action>,
 
     comms: Vec<Box<dyn Comm>>,
+
     event_sender: Sender<Event>,
     _event_default_receiver: Receiver<Event>,
-
-    pub extended: HashMap<String, String>,
 }
 
 impl OneBot {
-    pub fn new<S: Display, F: ConfigFile>(platform: S, config_file: F) -> Result<Self> {
+    pub fn new<S: Display>(platform: S) -> Self {
+        let (event_sender, _event_default_receiver) =
+            tokio::sync::broadcast::channel(DEFAULT_CHANNEL_CAPACITY);
+
+        Self {
+            platform: platform.to_string(),
+            config: Config::new(),
+            logger: Logger::new(),
+            event_generator: Box::new(Self::default_event_generator),
+            action_handlers: HashMap::new(),
+            comms: Vec::new(),
+            event_sender,
+            _event_default_receiver,
+        }
+    }
+
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    fn add_comm_box(mut self, comm: Box<dyn Comm>) -> Self {
+        self.comms.push(comm);
+        self
+    }
+
+    pub fn add_comm<C: 'static + Comm>(self, comm: C) -> Self {
+        self.add_comm_box(Box::new(comm))
+    }
+
+    pub fn init_from_file<F: ConfigFile>(mut self, config_file: F) -> Result<Self> {
+        self = self.config(Config::from_config_file(&config_file)?);
+
+        self.comms = Vec::new();
+
+        if let Some(comm_methods) = config_file.comm_methods() {
+            for comm_method in comm_methods {
+                self = self.add_comm_box(comm::from_config_file_comm_method(comm_method)?);
+            }
+        }
+
+        Ok(self)
+    }
+
+    /*pub fn new<S: Display, F: ConfigFile>(platform: S, config_file: F) -> Result<Self> {
         let config = Config::from_config_file(&config_file)?;
 
         let mut comms: Vec<Box<dyn Comm>> = Vec::new();
@@ -53,9 +99,6 @@ impl OneBot {
             }
         }
 
-        let (event_sender, _event_default_receiver) =
-            tokio::sync::broadcast::channel(config.channel_capacity);
-
         Ok(Self {
             platform: platform.to_string(),
             config,
@@ -67,11 +110,7 @@ impl OneBot {
             _event_default_receiver,
             extended: HashMap::new(),
         })
-    }
-
-    pub fn add_comm<C: 'static + Comm>(&mut self, comm: C) {
-        self.comms.push(Box::new(comm));
-    }
+    }*/
 
     pub async fn run(&mut self) {
         for comm in self.comms.iter() {
@@ -88,18 +127,21 @@ impl OneBot {
 
         // logger: "start"
 
-        (self.event_generator)(self.event_sender.clone());
+        (self.event_generator)(self.event_sender.clone()).unwrap();
 
         // logger: "shutdown"
     }
 
     pub fn shutdown(&self) {}
 
-    pub fn register_event_generator<F: 'static + Fn(Sender<Event>)>(&mut self, event_generator: F) {
+    pub fn register_event_generator<F: 'static + Fn(Sender<Event>) -> Result<()>>(
+        &mut self,
+        event_generator: F,
+    ) {
         self.event_generator = Box::new(event_generator);
     }
 
-    fn default_event_generator(_: Sender<Event>) {
+    fn default_event_generator(_: Sender<Event>) -> Result<()> {
         loop {}
     }
 
@@ -155,6 +197,9 @@ pub use config::ConfigFile;
 
 pub mod event;
 pub use event::{Event, EventContent};
+
+pub mod logger;
+pub use logger::Logger;
 
 pub mod message;
 pub use message::{Message, MessageSegment};

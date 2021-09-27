@@ -1,13 +1,33 @@
-use crate::{Action, Comm, Event, Result};
+use crate::{config::ConfigFileCommMethod, Action, Comm, Event, Result};
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 use tokio::sync::broadcast::Sender;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 
 #[derive(Debug, Clone)]
 pub struct WebSocketReverse {
     connect_url: String,
+}
+
+impl WebSocketReverse {
+    pub fn new<S: Display>(connect_url: S) -> Self {
+        Self {
+            connect_url: connect_url.to_string(),
+        }
+    }
+
+    pub(crate) fn from_config_file_comm_method(
+        comm_method: &ConfigFileCommMethod,
+    ) -> Result<Box<dyn Comm>> {
+        let ws_reverse = Self::new(
+            comm_method
+                .url
+                .clone()
+                .unwrap_or("127.0.0.1:5700".to_string()),
+        );
+        Ok(Box::new(ws_reverse))
+    }
 }
 
 #[async_trait]
