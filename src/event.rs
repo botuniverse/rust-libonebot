@@ -39,16 +39,6 @@ impl Event {
         self
     }
 
-    pub fn message(self, message: Message) -> Event {
-        Event {
-            id: self.id,
-            platform: self.platform,
-            time: self.time,
-            content: EventContent::Message(message),
-            bot_user: self.bot_user,
-        }
-    }
-
     pub(crate) fn to_json(&self) -> Result<String> {
         let ret = serde_json::to_string(&EventJson::from(self.clone()))?;
         return Ok(ret);
@@ -86,6 +76,36 @@ impl EventBuilder {
             platform: self.platform,
             time: self.time,
             content: EventContent::Message(message),
+            bot_user: self.bot_user,
+        }
+    }
+
+    pub fn notice(self, notice: Notice) -> Event {
+        Event {
+            id: self.id,
+            platform: self.platform,
+            time: self.time,
+            content: EventContent::Notice(notice),
+            bot_user: self.bot_user,
+        }
+    }
+
+    pub fn request(self, request: Request) -> Event {
+        Event {
+            id: self.id,
+            platform: self.platform,
+            time: self.time,
+            content: EventContent::Request(request),
+            bot_user: self.bot_user,
+        }
+    }
+
+    pub fn meta(self, meta: Meta) -> Event {
+        Event {
+            id: self.id,
+            platform: self.platform,
+            time: self.time,
+            content: EventContent::Meta(meta),
             bot_user: self.bot_user,
         }
     }
@@ -185,13 +205,11 @@ impl EventContent {
 }
 
 #[derive(Debug, Clone)]
-pub struct Notice {
-    extended: HashMap<String, String>,
-}
+pub struct Notice {}
 
 #[derive(Debug, Clone)]
 pub struct Request {
-    extended: HashMap<String, String>,
+    flag: String,
 }
 
 #[derive(Debug, Clone)]
