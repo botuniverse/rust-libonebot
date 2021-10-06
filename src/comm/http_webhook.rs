@@ -29,7 +29,7 @@ impl HTTPWebHook {
             comm_method
                 .url
                 .clone()
-                .unwrap_or("127.0.0.1:5700".to_string()),
+                .unwrap_or_else(|| "127.0.0.1:5700".to_string()),
         );
         if let Some(secret) = comm_method.secret.clone() {
             http_webhook = http_webhook.secret(secret);

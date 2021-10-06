@@ -13,13 +13,13 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn new<S: Display>(id: S) -> MessageBuilder {
+    pub fn build<S: Display>(id: S) -> MessageBuilder {
         MessageBuilder {
             id: id.to_string(),
             content: Vec::new(),
         }
     }
-    pub fn from_private(self, user: User) -> Message {
+    pub fn private(self, user: User) -> Message {
         Message {
             id: self.id,
             source: MessageSource::Private(user.clone()),
@@ -28,7 +28,7 @@ impl Message {
         }
     }
 
-    pub fn from_group(self, group: Group, sender: User) -> Message {
+    pub fn group(self, group: Group, sender: User) -> Message {
         Message {
             id: self.id,
             source: MessageSource::Group(group),
@@ -95,7 +95,7 @@ pub struct MessageBuilder {
 }
 
 impl MessageBuilder {
-    pub fn from_private(self, user: User) -> Message {
+    pub fn private(self, user: User) -> Message {
         Message {
             id: self.id,
             source: MessageSource::Private(user.clone()),
@@ -104,7 +104,7 @@ impl MessageBuilder {
         }
     }
 
-    pub fn from_group(self, group: Group, sender: User) -> Message {
+    pub fn group(self, group: Group, sender: User) -> Message {
         Message {
             id: self.id,
             source: MessageSource::Group(group),

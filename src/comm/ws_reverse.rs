@@ -24,7 +24,7 @@ impl WebSocketReverse {
             comm_method
                 .url
                 .clone()
-                .unwrap_or("127.0.0.1:5700".to_string()),
+                .unwrap_or_else(|| "127.0.0.1:5700".to_string()),
         );
         Ok(Box::new(ws_reverse))
     }
@@ -55,23 +55,21 @@ impl Comm for WebSocketReverse {
                     }
                 }
                 msg = ws_receiver.next() => {
-                    if let Some(msg) = msg {
-                        if let Ok(msg) = msg {
-                            if let Ok(text) = msg.into_text() {
-                                let action_json =
-                                    serde_json::from_str::<crate::action::ActionJson>(
-                                        &text,
-                                    )
-                                    .unwrap();
-                                let action =
-                                    action_handlers.get(&action_json.action).unwrap();
-                                ws_sender
-                                    .send(TungsteniteMessage::Text((action.action)(
-                                        action_json.params,
-                                    )))
-                                    .await
-                                    .unwrap();
-                            }
+                    if let Some(Ok(msg)) = msg {
+                        if let Ok(text) = msg.into_text() {
+                            let action_json =
+                                serde_json::from_str::<crate::action::ActionJson>(
+                                    &text,
+                                )
+                                .unwrap();
+                            let action =
+                                action_handlers.get(&action_json.action).unwrap();
+                            ws_sender
+                                .send(TungsteniteMessage::Text((action.action)(
+                                    action_json.params,
+                                )))
+                                .await
+                                .unwrap();
                         }
                     }
                 }

@@ -32,7 +32,10 @@ impl WebSocket {
     ) -> Result<Box<dyn Comm>> {
         Ok(Box::new(Self::new(format!(
             "{}:{}",
-            comm_method.host.clone().unwrap_or("127.0.0.1".to_string()),
+            comm_method
+                .host
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
             comm_method.port.unwrap_or(6700)
         ))?))
     }
@@ -46,7 +49,7 @@ impl Comm for WebSocket {
         event_sender: Sender<Event>,
         platform: String,
     ) -> Result<()> {
-        let socket_addr = self.socket_addr.clone();
+        let socket_addr = self.socket_addr;
 
         let listener = TcpListener::bind(&socket_addr).await?;
 
@@ -70,23 +73,21 @@ impl Comm for WebSocket {
                             }
                         }
                         msg = ws_receiver.next() => {
-                            if let Some(msg) = msg {
-                                if let Ok(msg) = msg {
-                                    if let Ok(text) = msg.into_text() {
-                                        let action_json =
-                                            serde_json::from_str::<crate::action::ActionJson>(
-                                                &text,
-                                            )
-                                            .unwrap();
-                                        let action =
-                                            action_handlers.get(&action_json.action).unwrap();
-                                        ws_sender
-                                            .send(TungsteniteMessage::Text((action.action)(
-                                                action_json.params,
-                                            )))
-                                            .await
-                                            .unwrap();
-                                    }
+                            if let Some(Ok(msg)) = msg {
+                                if let Ok(text) = msg.into_text() {
+                                    let action_json =
+                                        serde_json::from_str::<crate::action::ActionJson>(
+                                            &text,
+                                        )
+                                        .unwrap();
+                                    let action =
+                                        action_handlers.get(&action_json.action).unwrap();
+                                    ws_sender
+                                        .send(TungsteniteMessage::Text((action.action)(
+                                            action_json.params,
+                                        )))
+                                        .await
+                                        .unwrap();
                                 }
                             }
                         }

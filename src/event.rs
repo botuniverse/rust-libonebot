@@ -15,7 +15,7 @@ pub struct Event {
 }
 
 impl Event {
-    pub fn new<S: Display>(id: S) -> EventBuilder {
+    pub fn build<S: Display>(id: S) -> EventBuilder {
         EventBuilder {
             id: id.to_string(),
             platform: String::new(),
@@ -41,7 +41,7 @@ impl Event {
 
     pub(crate) fn to_json(&self) -> Result<String> {
         let ret = serde_json::to_string(&EventJson::from(self.clone()))?;
-        return Ok(ret);
+        Ok(ret)
     }
 }
 

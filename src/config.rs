@@ -1,12 +1,17 @@
 use crate::{Error, Result};
 use serde::Deserialize;
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, default::Default, fmt::Debug};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub heartbeat: Option<u32>,
     pub auth: Auth,
-    pub channel_capacity: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Config {
@@ -14,7 +19,6 @@ impl Config {
         Self {
             heartbeat: None,
             auth: Auth { access_token: None },
-            channel_capacity: crate::DEFAULT_CHANNEL_CAPACITY,
         }
     }
 
@@ -22,16 +26,14 @@ impl Config {
         let mut config = Self::new();
 
         if let Some(heartbeat) = config_file.heartbeat() {
-            if !heartbeat.enabled {
+            if !heartbeat.enable {
                 config.heartbeat = None;
+            } else if let Some(interval) = heartbeat.interval {
+                config.heartbeat = Some(interval);
             } else {
-                if let Some(interval) = heartbeat.interval {
-                    config.heartbeat = Some(interval);
-                } else {
-                    return Err(Error::msg(
-                        "config error: no heartbeat.interval when heartbeat.enabled is true",
-                    ));
-                }
+                return Err(Error::msg(
+                    "config error: no heartbeat.interval when heartbeat.enabled is true",
+                ));
             }
         }
 
@@ -41,17 +43,11 @@ impl Config {
             }
         }
 
-        if let Some(channel_capacity) = config_file.channel_capacity() {
-            if let Some(capacity) = channel_capacity.event {
-                config.channel_capacity = capacity;
-            }
-        }
-
         Ok(config)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Auth {
     pub access_token: Option<String>,
 }
@@ -59,24 +55,18 @@ pub struct Auth {
 pub trait ConfigFile: Debug {
     fn heartbeat(&self) -> Option<&ConfigFileHeartBeat>;
     fn auth(&self) -> Option<&ConfigFileAuth>;
-    fn channel_capacity(&self) -> Option<&ConfigFileChannelCapacity>;
     fn comm_methods(&self) -> Option<&HashMap<String, ConfigFileCommMethod>>;
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFileHeartBeat {
-    pub enabled: bool,
+    pub enable: bool,
     pub interval: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFileAuth {
     pub access_token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ConfigFileChannelCapacity {
-    pub event: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,7 +88,6 @@ pub struct ConfigFileCommMethod {
 pub struct DefaultConfigFile {
     heartbeat: Option<ConfigFileHeartBeat>,
     auth: Option<ConfigFileAuth>,
-    channel_capacity: Option<ConfigFileChannelCapacity>,
     comm_method: Option<HashMap<String, ConfigFileCommMethod>>,
 }
 
@@ -107,9 +96,14 @@ impl DefaultConfigFile {
         Self {
             heartbeat: None,
             auth: None,
-            channel_capacity: None,
             comm_method: None,
         }
+    }
+}
+
+impl Default for DefaultConfigFile {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -123,12 +117,6 @@ impl ConfigFile for DefaultConfigFile {
     fn auth(&self) -> Option<&ConfigFileAuth> {
         match &self.auth {
             Some(auth) => Some(&auth),
-            None => None,
-        }
-    }
-    fn channel_capacity(&self) -> Option<&ConfigFileChannelCapacity> {
-        match &self.channel_capacity {
-            Some(channelcapacity) => Some(&channelcapacity),
             None => None,
         }
     }

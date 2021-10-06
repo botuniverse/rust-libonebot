@@ -31,7 +31,10 @@ impl HTTP {
     ) -> Result<Box<dyn Comm>> {
         Ok(Box::new(Self::new(format!(
             "{}:{}",
-            comm_method.host.clone().unwrap_or("127.0.0.1".to_string()),
+            comm_method
+                .host
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
             comm_method.port.unwrap_or(5700)
         ))?))
     }
