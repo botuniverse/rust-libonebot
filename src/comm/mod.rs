@@ -32,6 +32,6 @@ pub(crate) fn from_config_file_comm_method(
         "http_webhook" => HTTPWebHook::from_config_file_comm_method(comm_method),
         "ws" => WebSocket::from_config_file_comm_method(comm_method),
         "ws_reverse" => WebSocketReverse::from_config_file_comm_method(comm_method),
-        _ => Err(Error::msg("config error: unsupport communication type")),
+        _ => Err(Error::msg("配置文件错误：不支持/不识别的通信方式")),
     }
 }
