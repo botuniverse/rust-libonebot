@@ -8,8 +8,8 @@ use std::{
 use tokio::sync::broadcast::{Receiver, Sender};
 
 pub struct OneBot {
-    platform: String,
-    self_user: Option<User>,
+    pub platform: String,
+    pub self_user: Option<User>,
     config: Option<Config>,
 
     event_generator: Box<dyn Fn(Sender<Event>) -> Result<()>>,
@@ -37,28 +37,9 @@ impl OneBot {
         }
     }
 
-    pub fn platform(&self) -> String {
-        self.platform.clone()
-    }
-
-    pub fn set_platform<S: Display>(&mut self, new_platform: &S) {
-        self.platform = new_platform.to_string();
-    }
-
-    pub fn has_platform(&self) -> bool {
-        !self.platform.is_empty()
-    }
-
-    pub fn self_user(&self) -> Option<User> {
-        self.self_user.clone()
-    }
-
-    pub fn set_self_user(&mut self, user: User) {
-        self.self_user = Some(user);
-    }
-
-    pub fn has_self_user(&self) -> bool {
-        self.self_user.is_some()
+    pub fn set_self_id<S: Display>(&mut self, id: S) -> &mut Self {
+        self.self_user = Some(User::new(id));
+        self
     }
 
     pub fn has_self_id(&self) -> bool {
@@ -72,23 +53,133 @@ impl OneBot {
         self.config.clone()
     }
 
-    pub fn set_config(&mut self, new_config: Config) {
+    pub fn set_config(&mut self, new_config: Config) -> &mut Self {
         self.config = Some(new_config);
+        self
     }
 
-    pub fn has_config(&self) -> bool {
-        self.config.is_some()
+    pub fn set_default_config(&mut self) -> &mut Self {
+        self.config = Some(Config::new());
+        self
     }
 
-    fn add_comm_box<S: Display>(&mut self, name: &S, comm: Box<dyn Comm>) {
+    pub fn auth(&self) -> Option<config::Auth> {
+        self.config.as_ref().map(|config| config.auth.clone())
+    }
+
+    pub fn access_token(&self) -> Option<String> {
+        if let Some(auth) = self.auth() {
+            auth.access_token
+        } else {
+            None
+        }
+    }
+
+    pub fn set_access_token<S: Display>(&mut self, access_token: S) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.auth.access_token = Some(access_token.to_string());
+        self.config = Some(config);
+        self
+    }
+
+    pub fn has_access_token(&self) -> bool {
+        if let Some(auth) = self.auth() {
+            auth.access_token.is_some()
+        } else {
+            false
+        }
+    }
+
+    pub fn heartbeat_interval(&self) -> Option<u32> {
+        if let Some(config) = &self.config {
+            config.heartbeat
+        } else {
+            None
+        }
+    }
+
+    pub fn enable_heartbeat(&mut self, interval: u32) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.heartbeat = Some(interval);
+        self.config = Some(config);
+        self
+    }
+
+    pub fn heartbeat_enabled(&self) -> bool {
+        if let Some(config) = &self.config {
+            config.heartbeat.is_some()
+        } else {
+            false
+        }
+    }
+
+    pub fn log_to_stderr(&mut self) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.log.output = config::LogOutput::Stderr;
+        self.config = Some(config);
+        self
+    }
+
+    pub fn log_to_stdout(&mut self) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.log.output = config::LogOutput::Stdout;
+        self.config = Some(config);
+        self
+    }
+
+    pub fn log_to_nul(&mut self) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.log.output = config::LogOutput::Nul;
+        self.config = Some(config);
+        self
+    }
+
+    pub fn log_to_path<S: Display>(&mut self, path: S) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.log.path = Some(path.to_string());
+        self.config = Some(config);
+        self
+    }
+
+    pub fn set_log_level(&mut self, level: log::LevelFilter) -> &mut Self {
+        let mut config = Config::new();
+        if let Some(c) = &self.config {
+            config = c.clone();
+        }
+        config.log.level = level;
+        self.config = Some(config);
+        self
+    }
+
+    fn add_comm_box<S: Display>(&mut self, name: &S, comm: Box<dyn Comm>) -> &mut Self {
         self.comms.insert(name.to_string(), comm);
+        self
     }
 
-    pub fn add_comm<S: Display, C: 'static + Comm>(&mut self, name: &S, comm: C) {
+    pub fn add_comm<S: Display, C: 'static + Comm>(&mut self, name: &S, comm: C) -> &mut Self {
         self.add_comm_box(name, Box::new(comm));
+        self
     }
 
-    pub fn init_from_file<F: ConfigFile>(&mut self, config_file: F) -> Result<()> {
+    pub fn init_from_file<F: ConfigFile>(&mut self, config_file: F) -> Result<&mut Self> {
         self.set_config(Config::from_config_file(&config_file)?);
 
         self.comms = HashMap::new();
@@ -99,7 +190,7 @@ impl OneBot {
             }
         }
 
-        Ok(())
+        Ok(self)
     }
 
     fn start_comm_methods(&self) {
@@ -117,24 +208,36 @@ impl OneBot {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        if !self.has_platform() {
-            let text = "必须提供 OneBot 平台名称";
-            log::error!("{}", text);
-            panic!("{}", text);
+        if self.platform.is_empty() {
+            return Err(Error::msg("必须提供 OneBot 平台名称"));
         }
         if !self.has_self_id() {
-            let text = "必须提供 OneBot 实例对应的机器人自身 ID";
-            log::error!("{}", text);
-            panic!("{}", text);
+            return Err(Error::msg("必须提供 OneBot 实例对应的机器人自身 ID"));
         }
 
         let heartbeat;
         if let Some(config) = &self.config {
             heartbeat = config.heartbeat;
+
+            let mut dispatch = fern::Dispatch::new().format(|out, message, record| {
+                out.finish(format_args!(
+                    "{} [{}] {}",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    record.level(),
+                    message
+                ))
+            });
+            if let config::LogOutput::Stderr = config.log.output {
+                dispatch = dispatch.chain(std::io::stderr());
+            } else if let config::LogOutput::Stdout = config.log.output {
+                dispatch = dispatch.chain(std::io::stdout());
+            }
+            if let Some(path) = &config.log.path {
+                dispatch = dispatch.chain(fern::log_file(path)?);
+            }
+            dispatch.level(config.log.level).apply()?;
         } else {
-            let text = "必须提供 OneBot 配置";
-            log::error!("{}", text);
-            panic!("{}", text);
+            return Err(Error::msg("必须提供 OneBot 配置"));
         }
 
         // context.withCancel

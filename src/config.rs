@@ -21,8 +21,9 @@ impl Config {
             auth: Auth { access_token: None },
             heartbeat: None,
             log: Log {
-                output: LogOutput::StdErr,
+                output: LogOutput::Stderr,
                 path: Some("./onebot.log".to_string()),
+                level: log::LevelFilter::Info,
             },
         }
     }
@@ -46,10 +47,10 @@ impl Config {
             }
             if log.mode == "terminal" || log.mode == "all" {
                 if let Some(output) = &log.output {
-                    if output == "stderr" {
-                        config.log.output = LogOutput::StdErr;
+                    config.log.output = if output == "stderr" {
+                        LogOutput::Stderr
                     } else if output == "stdout" {
-                        config.log.output = LogOutput::StdOut;
+                        LogOutput::Stdout
                     } else {
                         return Err(Error::msg(
                             "配置文件错误：未知的终端输出类型，应为：\"stderr\" 或 \"stdout\"",
@@ -57,7 +58,7 @@ impl Config {
                     }
                 }
             } else {
-                config.log.output = LogOutput::None;
+                config.log.output = LogOutput::Nul;
             }
             if log.mode == "file" || log.mode == "all" {
                 if let Some(path) = &log.path {
@@ -65,6 +66,22 @@ impl Config {
                 }
             } else {
                 config.log.path = None;
+            }
+
+            if let Some(level) = &log.level {
+                config.log.level = if level == "error" {
+                    log::LevelFilter::Error
+                } else if level == "warn" {
+                    log::LevelFilter::Warn
+                } else if level == "info" {
+                    log::LevelFilter::Info
+                } else if level == "debug" {
+                    log::LevelFilter::Debug
+                } else if level == "trace" {
+                    log::LevelFilter::Trace
+                } else {
+                    return Err(Error::msg("配置文件错误，未知的日志级别，应为：\"error\"、\"warn\"、\"info\"、\"debug\" 或 \"trace\""));
+                }
             }
         }
 
@@ -87,15 +104,17 @@ pub struct Auth {
 
 #[derive(Debug, Clone)]
 pub struct Log {
+    // multiple output and path?
     pub output: LogOutput,
     pub path: Option<String>,
+    pub level: log::LevelFilter,
 }
 
 #[derive(Debug, Clone)]
 pub enum LogOutput {
-    StdErr,
-    StdOut,
-    None,
+    Stderr,
+    Stdout,
+    Nul,
 }
 
 pub trait ConfigFile: Debug {
@@ -136,6 +155,7 @@ pub struct ConfigFileLog {
     pub mode: String,
     pub output: Option<String>,
     pub path: Option<String>,
+    pub level: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
