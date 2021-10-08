@@ -251,14 +251,14 @@ impl OneBot {
 
         (self.event_generator)(self.event_sender.clone())?;
 
-        log::info!("OneBot 已关闭");
-
         Ok(())
     }
 
     fn heartbeat(&self) {}
 
-    pub fn shutdown(&self) {}
+    pub fn shutdown(&self) {
+        log::info!("OneBot 已关闭");
+    }
 
     pub fn register_event_generator<F: 'static + Fn(Sender<Event>) -> Result<()>>(
         &mut self,
@@ -277,9 +277,10 @@ impl OneBot {
         &mut self,
         name: S,
         action: fn(_: serde_json::Value) -> String,
-    ) {
+    ) -> &mut Self {
         self.action_handlers
             .insert(name.to_string(), Action::from(action));
+        self
     }
 }
 
